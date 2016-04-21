@@ -1,21 +1,53 @@
 #include <iostream>
 #include <unistd.h>
+#include <vector>
 
 #include "VirtualMachine.h"
 #include "Machine.h"
 
-using namespace std;
-
-volatile unsigned int counter = 0;
-
 extern "C" {
+
+  using namespace std;
+
+  class TCB {
+
+    unsigned int TVMMemorySize, *TVMMemorySizeRef;
+    unsigned int TVMStatus, *TVMStatusRef;
+    unsigned int TVMTick, *TVMTickRef;
+    unsigned int TVMThreadID, *TVMThreadIDRef;
+    unsigned int TVMMutexID, *TVMMutexIDRef;
+    unsigned int TVMThreadPriority, *TVMThreadPriorityRef;
+    unsigned int TVMThreadState, *TVMThreadStateRef;
+
+    void (*TVMMainEntry)(int, char*[]);
+    void (*TVMThreadEntry)(void *);
+    
+    void AlarmCall(void *param);
+
+    TMachineSignalStateRef sigstate;
+
+  };
+
+
+  volatile unsigned int counter = 0;
+  static vector<TCB*> threads;
+
 
   TVMMainEntry VMLoadModule(const char *module);
 
-  void AlarmCall(void *param)
+  TVMStatus VMThreadCreate(TVMThreadEntry entry, void *param, TVMMemorySize memsize, TVMThreadPriority prio, TVMThreadIDRef tid)
   {
 
-    cout << "tick\n";
+    TCB *thread = new TCB;
+    threads.push_back(thread); 
+    //MachineSuspendSignals(sigstate);
+
+    
+
+  }
+
+  void AlarmCall(void *param)
+  {
 
     if(counter > 0)
     {
