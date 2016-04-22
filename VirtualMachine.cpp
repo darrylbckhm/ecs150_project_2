@@ -11,20 +11,22 @@ extern "C" {
 
   class TCB {
 
-    unsigned int TVMMemorySize, *TVMMemorySizeRef;
-    unsigned int TVMStatus, *TVMStatusRef;
-    unsigned int TVMTick, *TVMTickRef;
-    unsigned int TVMThreadID, *TVMThreadIDRef;
-    unsigned int TVMMutexID, *TVMMutexIDRef;
-    unsigned int TVMThreadPriority, *TVMThreadPriorityRef;
-    unsigned int TVMThreadState, *TVMThreadStateRef;
+    public: 
 
-    void (*TVMMainEntry)(int, char*[]);
-    void (*TVMThreadEntry)(void *);
-    
-    void AlarmCall(void *param);
+      unsigned int TVMMemorySize, *TVMMemorySizeRef;
+      unsigned int TVMStatus, *TVMStatusRef;
+      unsigned int TVMTick, *TVMTickRef;
+      unsigned int TVMThreadID, *TVMThreadIDRef;
+      unsigned int TVMMutexID, *TVMMutexIDRef;
+      unsigned int TVMThreadPriority, *TVMThreadPriorityRef;
+      unsigned int TVMThreadState, *TVMThreadStateRef;
 
-    TMachineSignalStateRef sigstate;
+      void (*TVMMainEntry)(int, char*[]);
+      void (*TVMThreadEntry)(void *);
+
+      void AlarmCall(void *param);
+
+      TMachineSignalStateRef sigstate;
 
   };
 
@@ -39,10 +41,58 @@ extern "C" {
   {
 
     TCB *thread = new TCB;
+    thread->TVMMemorySize = memsize;
+    //thread->TVMStatus;
+    //thread->TVMTick;
+    thread->TVMThreadID = ((TVMThreadID)0);
+    thread->TVMMutexID = 0;
+    thread->TVMThreadPriority = prio;
+    thread->TVMThreadState = VM_THREAD_STATE_DEAD;
+
     threads.push_back(thread); 
+
+    TCB *thread2 = threads[0];
+    cout << endl << "threadID: " << thread2->TVMThreadIDRef << endl;
+    tid = threads[0]->TVMThreadIDRef;
+
+
     //MachineSuspendSignals(sigstate);
 
-    
+    return VM_STATUS_SUCCESS;
+  }
+
+  TVMStatus VMThreadActivate(TVMThreadID thread)
+  {
+    return VM_STATUS_SUCCESS;
+  }
+
+  TVMStatus VMThreadState(TVMThreadID thread, TVMThreadStateRef stateref)
+  {
+    cout << endl << "thread in VMThreadState: " << (unsigned int)thread << endl;
+    return VM_STATUS_SUCCESS;
+
+  }
+
+  TVMStatus VMThreadSleep(TVMTick tick)
+  {
+
+    counter = tick;
+
+    while(counter)
+    {
+
+      //cout << counter << "\n";
+      //cout << "Sleeping\n"; 
+
+    }
+
+    return VM_STATUS_SUCCESS;
+
+  }
+
+  TVMStatus VMTickMS(int *tickmsref)
+  {
+    return VM_STATUS_SUCCESS;
 
   }
 
@@ -58,27 +108,7 @@ extern "C" {
 
   }
 
-  TVMStatus VMThreadSleep(TVMTick tick)
-  {
 
-    counter = tick;
-
-    while(counter)
-    {
-
-       cout << counter << "\n";
-       cout << "Sleeping\n"; 
-
-    }
-
-  }
-
-  TVMStatus VMTickMS(int *tickmsref)
-  {
-
-    
-
-  }
 
   TVMStatus VMStart(int tickms, int argc, char *argv[])
   {
