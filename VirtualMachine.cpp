@@ -12,14 +12,13 @@ extern "C" {
   class TCB {
 
     public: 
-
-      unsigned int TVMMemorySize, *TVMMemorySizeRef;
-      unsigned int TVMStatus, *TVMStatusRef;
-      unsigned int TVMTick, *TVMTickRef;
-      unsigned int TVMThreadID, *TVMThreadIDRef;
-      unsigned int TVMMutexID, *TVMMutexIDRef;
-      unsigned int TVMThreadPriority, *TVMThreadPriorityRef;
-      unsigned int TVMThreadState, *TVMThreadStateRef;
+      TVMMemorySize memsize;
+      TVMStatus status;
+      TVMTick tick;
+      TVMThreadID threadID;
+      TVMMutexID mutexID;
+      TVMThreadPriority priority;
+      TVMThreadState state;
 
       void (*TVMMainEntry)(int, char*[]);
       void (*TVMThreadEntry)(void *);
@@ -40,35 +39,46 @@ extern "C" {
   TVMStatus VMThreadCreate(TVMThreadEntry entry, void *param, TVMMemorySize memsize, TVMThreadPriority prio, TVMThreadIDRef tid)
   {
 
+    TVMThreadID id = 0;
+
     TCB *thread = new TCB;
-    thread->TVMMemorySize = memsize;
-    //thread->TVMStatus;
-    //thread->TVMTick;
-    thread->TVMThreadID = ((TVMThreadID)0);
-    thread->TVMMutexID = 0;
-    thread->TVMThreadPriority = prio;
-    thread->TVMThreadState = VM_THREAD_STATE_DEAD;
+    thread->memsize = memsize;
+    thread->status = VM_STATUS_SUCCESS;
+    //thread->tick;
+    thread->threadID = id;
+    thread->mutexID = 0;
+    thread->priority = prio;
+    thread->state = VM_THREAD_STATE_DEAD;
 
     threads.push_back(thread); 
 
-    TCB *thread2 = threads[0];
-    cout << endl << "threadID: " << thread2->TVMThreadIDRef << endl;
-    tid = threads[0]->TVMThreadIDRef;
-
-
-    //MachineSuspendSignals(sigstate);
+    *tid = id;
 
     return VM_STATUS_SUCCESS;
   }
 
   TVMStatus VMThreadActivate(TVMThreadID thread)
   {
+    for (vector<TCB *>::iterator itr = threads.begin(); itr != threads.end(); itr++)
+    {
+      if ((*itr)->threadID == thread)
+      {
+        (*itr)->state = VM_THREAD_STATE_READY;
+      }
+    }
     return VM_STATUS_SUCCESS;
   }
 
   TVMStatus VMThreadState(TVMThreadID thread, TVMThreadStateRef stateref)
   {
-    cout << endl << "thread in VMThreadState: " << (unsigned int)thread << endl;
+    for (vector<TCB *>::iterator itr = threads.begin(); itr != threads.end(); itr++)
+    {
+      if ((*itr)->threadID == thread)
+      {
+        *stateref = (*itr)->state;
+      }
+    }
+
     return VM_STATUS_SUCCESS;
 
   }
@@ -120,7 +130,6 @@ extern "C" {
     MachineEnableSignals();
 
     string s = "module: " + module_name + "\n";
-    VMPrint(s.c_str());
     VMFilePrint(1, s.c_str());
 
     main_entry(argc, argv);
