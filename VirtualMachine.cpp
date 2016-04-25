@@ -1,6 +1,8 @@
 #include <iostream>
 #include <unistd.h>
 #include <vector>
+#include <queue>
+#include "stdint.h"
 
 #include "VirtualMachine.h"
 #include "Machine.h"
@@ -20,6 +22,9 @@ extern "C" {
       TVMThreadPriority priority;
       TVMThreadState state;
 
+      SMachineContext mcntx;
+      SMachineContextRef mcntxref;
+
       void (*TVMMainEntry)(int, char*[]);
       void (*TVMThreadEntry)(void *);
 
@@ -32,7 +37,65 @@ extern "C" {
 
   volatile unsigned int counter = 0;
   static vector<TCB*> threads;
+  static queue<TCB*> prioQueue;
+  static TCB *curThread;
+  volatile static SMachineContext mcntx;
 
+  void skeleton(void *param)
+  {
+
+    VMThreadTerminate(curThread->threadID);
+
+  }
+
+  void Scheduler()
+  {
+
+    //status = VM_THREAD_STATE_WAITING; 
+
+    for(vector<TCB*>::iterator itr = threads.begin(); itr != threads.end(); itr++)
+    {
+
+      if((*itr)->status == VM_THREAD_STATE_READY)
+      {
+
+        if((*itr)->priority < (*(itr++))->priority)
+        {
+
+          continue;
+
+
+        }
+
+        else
+        {
+
+          prioQueue.push((*itr));
+
+        }
+
+      }
+
+
+    }
+
+  }
+
+/*
+  TVMStatus VMFileOpen(int filedescriptor)
+  {
+
+    
+
+  }
+
+  TVMStatus VMFileClose(int filedescriptor)
+  {
+
+    
+
+  }
+*/
 
   TVMMainEntry VMLoadModule(const char *module);
 
@@ -50,7 +113,9 @@ extern "C" {
     thread->priority = prio;
     thread->state = VM_THREAD_STATE_DEAD;
 
-    threads.push_back(thread); 
+    threads.push_back(thread);
+
+    curThread = thread;
 
     *tid = id;
 
@@ -59,6 +124,13 @@ extern "C" {
 
   TVMStatus VMThreadActivate(TVMThreadID thread)
   {
+
+    int8_t *stack = new int8_t[curThread->memsize];
+    size_t stacksize = sizeof(stack);
+    SMachineContextRef mcntxref = new SMachineContext;
+
+    MachineContextCreate(mcntxref, skeleton, threads.back(), stack, stacksize);
+
     for (vector<TCB *>::iterator itr = threads.begin(); itr != threads.end(); itr++)
     {
       if ((*itr)->threadID == thread)
@@ -67,6 +139,43 @@ extern "C" {
       }
     }
     return VM_STATUS_SUCCESS;
+  }
+
+  TVMStatus VMThreadTerminate(TVMThreadID thread)
+  {
+
+    for(vector<TCB*>::iterator itr = threads.begin(); itr != threads.end(); itr++)
+    {
+
+      if((*itr)->threadID == thread)
+      {
+
+        if((*itr)->state == VM_THREAD_STATE_DEAD)
+        {
+
+          return VM_STATUS_ERROR_INVALID_STATE;
+
+        }
+
+        else
+        {
+
+          (*itr)->state = VM_THREAD_STATE_DEAD;
+          return VM_STATUS_SUCCESS;
+
+        }
+
+      }
+
+      else
+      {
+
+        return VM_STATUS_ERROR_INVALID_ID;
+
+      }
+
+    }
+
   }
 
   TVMStatus VMThreadState(TVMThreadID thread, TVMThreadStateRef stateref)
@@ -127,7 +236,7 @@ extern "C" {
 
     MachineInitialize();
     MachineRequestAlarm(tickms*1000, AlarmCall, NULL);
-    MachineEnableSignals();
+    MachineEnableSignals();   
 
     string s = "module: " + module_name + "\n";
     VMFilePrint(1, s.c_str());
