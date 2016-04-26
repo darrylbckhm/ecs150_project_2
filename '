@@ -28,7 +28,6 @@ extern "C" {
       SMachineContextRef mcntxref;
 
       TVMThreadEntry entry;
-      void *param;
 
       void (*TVMMainEntry)(int, char*[]);
       void (*TVMThreadEntry)(void *);
@@ -90,8 +89,6 @@ extern "C" {
     TCB *thread = (TCB *)param;
 
     cout << "threadID: " << thread->threadID << endl;
-    thread->entry(thread->param);
-
 
     //VMThreadTerminate(curThread->threadID);
 
@@ -178,7 +175,6 @@ extern "C" {
     thread->priority = prio;
     thread->state = VM_THREAD_STATE_DEAD;
     thread->entry =  entry;
-    thread->param = param;
     thread->mcntxref = new SMachineContext;
 
     threads.push_back(thread);
