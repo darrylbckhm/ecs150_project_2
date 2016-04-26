@@ -12,7 +12,7 @@ void VMThread(void *param){
 }
 
 void VMMain(int argc, char *argv[]){
-    TVMThreadID VMThreadID = 1;
+    TVMThreadID VMThreadID;
     TVMThreadState VMState;
     VMPrint("VMMain creating thread.\n");
     VMThreadCreate(VMThread, NULL, 0x100000, VM_THREAD_PRIORITY_NORMAL, &VMThreadID);
