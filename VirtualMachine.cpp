@@ -146,7 +146,6 @@ extern "C" {
 
     if (!activate)
     {
-
       //printThreadInfo();
 
       if(!highQueue.empty())
@@ -181,7 +180,9 @@ extern "C" {
       SMachineContextRef mcntxrefOld;
 
       mcntxrefOld = prevThread->mcntxref;
-      prevThread->state = VM_THREAD_STATE_READY;
+      if (prevThread->state == VM_THREAD_STATE_RUNNING)
+        prevThread->state = VM_THREAD_STATE_READY;
+
 
       SMachineContextRef mcntxrefNew = curThread->mcntxref;
       //cout << endl << "context switch" << endl;
@@ -322,7 +323,6 @@ extern "C" {
 
   TVMStatus VMThreadSleep(TVMTick tick)
   {
-
 
     for (vector<TCB *>::iterator itr = threads.begin(); itr != threads.end(); itr++)
     {
