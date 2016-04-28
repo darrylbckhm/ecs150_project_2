@@ -100,7 +100,7 @@ extern "C" {
     thread->entry(thread->param);
 
 
-    //VMThreadTerminate(curThread->threadID);
+    VMThreadTerminate(curThread->threadID);
 
   }
 
@@ -181,7 +181,7 @@ extern "C" {
       SMachineContextRef mcntxrefOld;
 
       mcntxrefOld = prevThread->mcntxref;
-      prevThread->state = VM_THREAD_STATE_WAITING;
+      prevThread->state = VM_THREAD_STATE_READY;
 
       SMachineContextRef mcntxrefNew = curThread->mcntxref;
       //cout << endl << "context switch" << endl;
@@ -323,6 +323,7 @@ extern "C" {
   TVMStatus VMThreadSleep(TVMTick tick)
   {
 
+
     for (vector<TCB *>::iterator itr = threads.begin(); itr != threads.end(); itr++)
     {
       if ((*itr)->state == VM_THREAD_STATE_RUNNING)
@@ -396,13 +397,88 @@ extern "C" {
     return VM_STATUS_SUCCESS;
   }
 
+  void fileCallback(void *calldata, int result)
+  {
+
+    TMachineSignalStateRef sigstate = new TMachineSignalState;
+    MachineSuspendSignals(sigstate);
+
+
+
+    MachineResumeSignals(sigstate);
+
+    
+
+  }
+
+  TVMStatus VMFileSeek(int filedescriptor, int offset, int whence, int *newoffset)
+  {
+    TMachineSignalStateRef sigstate = new TMachineSignalState;
+    MachineSuspendSignals(sigstate);
+
+
+
+    MachineResumeSignals(sigstate);
+
+    return VM_STATUS_SUCCESS;
+
+  }
+
+  TVMStatus VMFileClose(int filedescriptor)
+  {
+    TMachineSignalStateRef sigstate = new TMachineSignalState;
+    MachineSuspendSignals(sigstate);
+
+
+
+    MachineResumeSignals(sigstate);
+
+    return VM_STATUS_SUCCESS;
+
+  }
+
+  TVMStatus VMFileOpen(const char *filename, int flags, int mode, int *filedescriptor)
+  {
+
+    TMachineSignalStateRef sigstate = new TMachineSignalState;
+    MachineSuspendSignals(sigstate);
+
+
+
+    MachineResumeSignals(sigstate);
+
+   return VM_STATUS_SUCCESS; 
+
+  }
+
   TVMStatus VMFileWrite(int filedescriptor, void *data, int *length)
   { 
+    TMachineSignalStateRef sigstate = new TMachineSignalState;
+    MachineSuspendSignals(sigstate);
+
+
     if (*length == NULL)
       return VM_STATUS_ERROR_INVALID_PARAMETER;
 
     write(filedescriptor, data, *length);
+    //MachineFileWrite(filedescriptor, data, *length, fileCallback, NULL);
+
+    MachineResumeSignals(sigstate);
+
     return VM_STATUS_SUCCESS;
+  }
+
+  TVMStatus VMFileRead(int filedescriptor, void *data, int *length)
+  {
+    TMachineSignalStateRef sigstate = new TMachineSignalState;
+    MachineSuspendSignals(sigstate);
+
+
+
+    MachineResumeSignals(sigstate);
+
+    return VM_STATUS_SUCCESS;
+
   }
 
 }
