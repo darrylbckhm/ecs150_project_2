@@ -24,11 +24,13 @@ extern "C" {
       TVMMutexID mutexID;
       TVMThreadPriority priority;
       TVMThreadState state;
-      unsigned int sleepCount;
+      char *stackAddr;
+      volatile unsigned int sleepCount;
       // not sleeping = 0; sleeping = 1;
       unsigned int sleep;
+      unsigned int addedToQueue;
 
-      SMachineContextRef mcntxref;
+      SMachineContext mcntx;
 
       TVMThreadEntry entry;
       void *param;
@@ -53,7 +55,6 @@ extern "C" {
 
   static TCB *curThread;
   static TVMThreadID currentThreadID;
-  volatile static SMachineContext mcntx;
 
   // declaration of custom functions
   TVMMainEntry VMLoadModule(const char *module);
@@ -69,6 +70,7 @@ extern "C" {
     cout << "size of highQueue: " << highQueue.size() << endl;
     cout << "size of normalQueue: " << normalQueue.size() << endl;
     cout << "size of lowQueue: " << lowQueue.size() << endl;
+    cout << "currentThread: " << curThread->threadID << endl;
 
     for (vector<TCB *>::iterator itr = threads.begin(); itr != threads.end(); itr++)
     {
@@ -87,6 +89,7 @@ extern "C" {
         default:                    break;
       }
       cout << ", sleepStatus: " << thread->sleep;
+      cout << ", addedToQueue: " << thread->addedToQueue;
       cout << endl;
     }
     cout << endl;
@@ -94,11 +97,12 @@ extern "C" {
 
   void skeleton(void *param)
   {
+    //cout << "a" << endl;
+    MachineEnableSignals();
     //printThreadInfo();
     TCB *thread = (TCB *)param;
 
     thread->entry(thread->param);
-
 
     VMThreadTerminate(curThread->threadID);
 
@@ -109,26 +113,27 @@ extern "C" {
     TMachineSignalStateRef sigstate = new TMachineSignalState;
     //MachineSuspendSignals(sigstate);
 
-
     TCB *prevThread = curThread;
     currentThreadID = prevThread->threadID;
 
     for(vector<TCB*>::iterator itr = threads.begin(); itr != threads.end(); itr++)
     {
 
-      if((*itr)->state == VM_THREAD_STATE_READY)
+      if(((*itr)->state == VM_THREAD_STATE_READY) && ((*itr)->addedToQueue == 0))
       {
 
         if((*itr)->priority == VM_THREAD_PRIORITY_HIGH)
         {
-
+          
+          (*itr)->addedToQueue = 1;
           highQueue.push((*itr));
 
         }
 
         else if((*itr)->priority == VM_THREAD_PRIORITY_NORMAL)
         {
-
+          
+          (*itr)->addedToQueue = 1;
           normalQueue.push((*itr));
 
         }
@@ -136,6 +141,7 @@ extern "C" {
         else if((*itr)->priority == VM_THREAD_PRIORITY_LOW)
         {
 
+          (*itr)->addedToQueue = 1;
           lowQueue.push((*itr));
 
         }
@@ -143,7 +149,7 @@ extern "C" {
       }
 
     }
-
+    
     if (!activate)
     {
       //printThreadInfo();
@@ -172,24 +178,38 @@ extern "C" {
 
       }
 
-      //TVMThreadID nextThreadID = curThread->threadID;
+      curThread->addedToQueue = 0;
 
-      //cout << "prevThread: " << prevThread->threadID << endl;
-      //cout << "nextThread: " << nextThreadID << endl;
 
-      SMachineContextRef mcntxrefOld;
+      if ((curThread->priority < prevThread->priority) && (prevThread->state == VM_THREAD_STATE_RUNNING))
+      {
+        curThread = prevThread;
+        return;
+      }
+      
 
-      mcntxrefOld = prevThread->mcntxref;
+      MachineResumeSignals(sigstate);
+
+      if (prevThread->threadID == curThread->threadID)
+        return;
+
       if (prevThread->state == VM_THREAD_STATE_RUNNING)
         prevThread->state = VM_THREAD_STATE_READY;
+      
+      //cout << "prevThread: " << prevThread->threadID << endl;
+      //cout << "curThread (nextThread): " << curThread->threadID << endl;
 
-
-      SMachineContextRef mcntxrefNew = curThread->mcntxref;
-      //cout << endl << "context switch" << endl;
-      //printThreadInfo();
       curThread->state = VM_THREAD_STATE_RUNNING; 
-      MachineResumeSignals(sigstate);
-      MachineContextSwitch(mcntxrefOld, mcntxrefNew);
+      //printThreadInfo();
+      //cout << endl << "context save" << endl;
+      if (MachineContextSave(&prevThread->mcntx) == 0)
+      {
+        //cout << "context restore" << endl;
+        //cerr << static_cast<void *>(&curThread->mcntx) << endl;
+        MachineContextRestore(&curThread->mcntx);
+        //cout << "a" << endl;
+      }
+      //MachineContextSwitch(&prevThread->mcntx, &curThread->mcntx);
       //cout << "done" << endl << endl;
     }
 
@@ -198,6 +218,7 @@ extern "C" {
 
   void idle(void *param)
   {
+    //cout << "a" << endl;
 
     while(1)
     {
@@ -226,7 +247,6 @@ extern "C" {
     thread->state = VM_THREAD_STATE_DEAD;
     thread->entry =  entry;
     thread->param = param;
-    thread->mcntxref = new SMachineContext;
 
     threads.push_back(thread);
 
@@ -244,15 +264,15 @@ extern "C" {
     TMachineSignalStateRef sigstate = new TMachineSignalState;
     MachineSuspendSignals(sigstate);
 
-    int8_t *stack = new int8_t[curThread->memsize];
-    size_t stacksize = sizeof(stack);
-
     for (vector<TCB *>::iterator itr = threads.begin(); itr != threads.end(); itr++)
     {
       if ((*itr)->threadID == thread)
       {
-        (*itr)->mcntxref = new SMachineContext;
-        MachineContextCreate((*itr)->mcntxref, skeleton, threads.back(), stack, stacksize);
+        (*itr)->stackAddr = new char[(*itr)->memsize];
+        size_t stacksize = (*itr)->memsize;
+
+        MachineContextCreate(&(*itr)->mcntx, skeleton, *itr, (*itr)->stackAddr, stacksize);
+        //cerr << static_cast<void *>(&(*itr)->mcntx) << endl;
         (*itr)->state = VM_THREAD_STATE_READY;
       }
     }
@@ -268,7 +288,6 @@ extern "C" {
 
     for(vector<TCB*>::iterator itr = threads.begin(); itr != threads.end(); itr++)
     {
-
       if((*itr)->threadID == thread)
       {
 
@@ -283,16 +302,10 @@ extern "C" {
         {
 
           (*itr)->state = VM_THREAD_STATE_DEAD;
+          Scheduler(false);
           return VM_STATUS_SUCCESS;
 
         }
-
-      }
-
-      else
-      {
-
-        return VM_STATUS_ERROR_INVALID_ID;
 
       }
 
@@ -331,6 +344,7 @@ extern "C" {
         (*itr)->sleepCount = tick;
         (*itr)->state = VM_THREAD_STATE_WAITING;
         (*itr)->sleep = 1;
+        //printThreadInfo();
         Scheduler(false);
       }
     }
@@ -363,6 +377,7 @@ extern "C" {
           {
             (*itr)->sleep = 0;
             (*itr)->state = VM_THREAD_STATE_READY;
+            //printThreadInfo();
           }
         }
       }
@@ -391,6 +406,8 @@ extern "C" {
 
     VMThreadCreate(idle, NULL, 0x100000, VM_THREAD_PRIORITY_LOW, &VMThreadID);
     VMThreadActivate(VMThreadID);
+
+    //printThreadInfo();
 
     main_entry(argc, argv);
 
