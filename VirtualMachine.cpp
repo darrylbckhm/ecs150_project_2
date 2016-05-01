@@ -46,6 +46,8 @@ extern "C" {
 
   };
 
+  // keep track of total ticks
+  volatile unsigned int ticksElapsed;
 
   // vector of all threads
   static vector<TCB*> threads;
@@ -188,8 +190,6 @@ extern "C" {
         curThread = prevThread;
         return;
       }
-      
-
 
       if (prevThread->threadID == curThread->threadID)
         return;
@@ -233,7 +233,9 @@ extern "C" {
 
   TVMStatus VMThreadCreate(TVMThreadEntry entry, void *param, TVMMemorySize memsize, TVMThreadPriority prio, TVMThreadIDRef tid)
   {
+
     TMachineSignalStateRef sigstate = new TMachineSignalState;
+
     MachineSuspendSignals(sigstate);
 
     TVMThreadID id = threads.size();
@@ -355,17 +357,11 @@ extern "C" {
 
   }
 
-  TVMStatus VMTickMS(int *tickmsref)
-  {
-
-    return VM_STATUS_SUCCESS;
-
-  }
-
   void AlarmCall(void *param)
   {
-    //cout << "a" << endl;
+
     TMachineSignalStateRef sigstate = new TMachineSignalState;
+
     MachineSuspendSignals(sigstate);
 
     for (vector<TCB *>::iterator itr = threads.begin(); itr != threads.end(); itr++)
@@ -387,14 +383,52 @@ extern "C" {
     }
 
     MachineResumeSignals(sigstate);
+
     Scheduler(false);
 
   }
 
+  TVMStatus VMTickMS(int *tickmsref)
+  {
+
+    TMachineSignalStateRef sigstate = new TMachineSignalState;
+
+    MachineSuspendSignals(sigstate);
+
+    *tickmsref = (*tickmsref) * 1000;
+
+    MachineResumeSignals(sigstate);
+
+    Scheduler(false);
+
+    return VM_STATUS_SUCCESS;
+
+  }
+
+  TVMStatus VMTickCount(TVMTickRef tickref)
+  {
+
+    TMachineSignalStateRef sigstate = new TMachineSignalState;
+
+    MachineSuspendSignals(sigstate);
+
+    if(tickref == NULL)
+      return VM_STATUS_ERROR_INVALID_PARAMETER;
+
+    *tickref = 2; 
+
+    MachineResumeSignals(sigstate);
+
+    Scheduler(false);
+
+    return VM_STATUS_SUCCESS;
+
+  }
 
 
   TVMStatus VMStart(int tickms, int argc, char *argv[])
   {
+
     string module_name(argv[0]);
     TVMMainEntry main_entry = VMLoadModule(module_name.c_str());
 
@@ -421,11 +455,13 @@ extern "C" {
   {
 
     TMachineSignalStateRef sigstate = new TMachineSignalState;
+
     MachineSuspendSignals(sigstate);
 
     curThread->fileCallFlag = 1;
 
     TCB* thread = (TCB*)calldata;
+
     thread->fileCallData = result;
 
     thread->state = VM_THREAD_STATE_READY;
@@ -444,24 +480,30 @@ extern "C" {
   {
 
     TMachineSignalStateRef sigstate = new TMachineSignalState;
+
     MachineSuspendSignals(sigstate);
 
     if (newoffset != NULL)
       *newoffset = offset;
+
     else
       return VM_STATUS_FAILURE;
 
     MachineFileSeek(filedescriptor, offset, whence, fileCallback, curThread);
+
     curThread->state = VM_THREAD_STATE_WAITING;
 
     MachineResumeSignals(sigstate);
+
     Scheduler(false);
+
     return VM_STATUS_SUCCESS;
 
   }
 
   TVMStatus VMFileClose(int filedescriptor)
   {
+
     TMachineSignalStateRef sigstate = new TMachineSignalState;
     MachineSuspendSignals(sigstate);
 
@@ -479,18 +521,21 @@ extern "C" {
   {
 
     TMachineSignalStateRef sigstate = new TMachineSignalState;
+
     MachineSuspendSignals(sigstate);
 
     if (filename == NULL || filedescriptor == NULL)
       return VM_STATUS_ERROR_INVALID_PARAMETER;
 
-    *filedescriptor = 5; //curThread->fileCallData; 
-
     MachineFileOpen(filename, flags, mode, fileCallback, curThread);
 
-    MachineResumeSignals(sigstate);
+    curThread->state = VM_THREAD_STATE_WAITING;
 
     Scheduler(false);
+
+    *filedescriptor = curThread->fileCallData; 
+
+    MachineResumeSignals(sigstate);
 
     return VM_STATUS_SUCCESS; 
 
@@ -500,16 +545,20 @@ extern "C" {
   { 
 
     TMachineSignalStateRef sigstate = new TMachineSignalState;
+
     MachineSuspendSignals(sigstate);
 
     if (length == NULL || data == NULL)
       return VM_STATUS_ERROR_INVALID_PARAMETER;
 
     MachineFileWrite(filedescriptor, data, *length, fileCallback, curThread);
+
     curThread->state = VM_THREAD_STATE_WAITING;
 
     MachineResumeSignals(sigstate);
+
     Scheduler(false);
+
     return VM_STATUS_SUCCESS;
 
   }
@@ -518,18 +567,22 @@ extern "C" {
   {
 
     TMachineSignalStateRef sigstate = new TMachineSignalState;
+
     MachineSuspendSignals(sigstate);
 
     if (length == NULL || data == NULL)
       return VM_STATUS_ERROR_INVALID_PARAMETER;
 
-    *length = 7; //curThread->fileCallData;
-
     MachineFileRead(filedescriptor, data, *length, fileCallback, curThread);
+
     curThread->state = VM_THREAD_STATE_WAITING;
 
-    MachineResumeSignals(sigstate);
     Scheduler(false);
+
+    *length = curThread->fileCallData;
+
+    MachineResumeSignals(sigstate);
+
     return VM_STATUS_SUCCESS;
 
   }
