@@ -46,9 +46,19 @@ extern "C" {
 
   };
 
+  class Mutex {
+    public:
+      TCB *owner;
+      unsigned int locked;
+      queue<TCB *> highWaitingQueue;
+      queue<TCB *> normalWaitingQueue;
+      queue<TCB *> lowWaitingQueue;
+  };
+
 
   // vector of all threads
   static vector<TCB*> threads;
+  static vector<Mutex *> mutexes;
 
   // queue of threads sorted by priority
   static queue<TCB*> highQueue;
@@ -230,6 +240,22 @@ extern "C" {
     }
 
   }
+
+  TVMStatus VMMutexCreate(TVMMutexIDRef mutexref)
+  {
+    return VM_STATUS_SUCCESS;
+  }
+
+  TVMStatus VMMutexAcquire(TVMMutexID mutex, TVMTick timeout)
+  {
+    return VM_STATUS_SUCCESS;
+  }
+
+  TVMStatus VMMutexRelease(TVMMutexID mutex)
+  {
+    return VM_STATUS_SUCCESS;
+  }
+
 
   TVMStatus VMThreadCreate(TVMThreadEntry entry, void *param, TVMMemorySize memsize, TVMThreadPriority prio, TVMThreadIDRef tid)
   {
