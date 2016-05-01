@@ -316,6 +316,8 @@ extern "C" {
 
           }
 
+          MachineResumeSignals(sigstate);
+          Scheduler(false);
 
         }
       }
@@ -328,6 +330,44 @@ extern "C" {
 
   TVMStatus VMMutexRelease(TVMMutexID mutex)
   {
+    TMachineSignalStateRef sigstate = new TMachineSignalState;
+    MachineSuspendSignals(sigstate);
+
+    for (vector<Mutex *>::iterator itr = mutexes.begin(); itr != mutexes.end(); itr++)
+    {
+      if ((*itr)->mutexID == mutex)
+      {
+        (*itr)->locked = 0;
+        TCB *newOwner = NULL;
+        if ((*itr)->highWaitingQueue.size() > 0)
+        {
+          newOwner = (*itr)->highWaitingQueue.front();
+          (*itr)->highWaitingQueue.pop();
+        }
+        else if ((*itr)->normalWaitingQueue.size() > 0)
+        {
+          newOwner = (*itr)->normalWaitingQueue.front();
+          (*itr)->normalWaitingQueue.pop();
+        }
+        else if ((*itr)->lowWaitingQueue.size() > 0)
+        {
+          newOwner = (*itr)->lowWaitingQueue.front();
+          (*itr)->lowWaitingQueue.pop();
+        }
+
+        if (newOwner != NULL)
+        {
+          (*itr)->locked = 1;
+          (*itr)->owner = newOwner;
+          newOwner->state = VM_THREAD_STATE_READY;
+          MachineResumeSignals(sigstate);
+          Scheduler(false);
+        }
+      }
+    }
+
+    MachineResumeSignals(sigstate);
+
     return VM_STATUS_SUCCESS;
   }
 

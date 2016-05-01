@@ -8,7 +8,6 @@ TVMMutexID MutexHigh, MutexMedium, MutexLow, MutexMain;
 
 void VMThreadHigh(void *param){
     VMPrint("VMThreadHigh Alive\n");
-    printThreadInfo();
     VMMutexAcquire(MutexHigh, VM_TIMEOUT_INFINITE);
     VMPrint("VMThreadHigh Awake\n");
 }
