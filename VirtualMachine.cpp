@@ -107,7 +107,7 @@ extern "C" {
       cout << ", addedToQueue: " << thread->addedToQueue;
       cout << endl;
     }
-    
+
     for (vector<Mutex *>::iterator itr = mutexes.begin(); itr != mutexes.end(); itr++)
     {
       Mutex *mutex = *itr;
@@ -179,67 +179,65 @@ extern "C" {
 
     }
 
-    //printThreadInfo();
-
-    if (!activate)
+    if(!highQueue.empty())
     {
-      //printThreadInfo();
 
-      if(!highQueue.empty())
-      {
+      curThread = highQueue.front();
+      highQueue.pop();
 
-        curThread = highQueue.front();
-        highQueue.pop();
-
-      }
-
-      else if(!normalQueue.empty())
-      {
-
-        curThread = normalQueue.front();
-        normalQueue.pop();
-
-      }
-
-      else if(!lowQueue.empty())
-      {
-
-        curThread = lowQueue.front();
-        lowQueue.pop();
-
-      }
-
-      curThread->addedToQueue = 0;
-
-
-      if ((curThread->priority < prevThread->priority) && (prevThread->state == VM_THREAD_STATE_RUNNING))
-      {
-        curThread = prevThread;
-        return;
-      }
-
-      if (prevThread->threadID == curThread->threadID)
-        return;
-
-      if (prevThread->state == VM_THREAD_STATE_RUNNING)
-        prevThread->state = VM_THREAD_STATE_READY;
-
-      //cout << "prevThread: " << prevThread->threadID << endl;
-      //cout << "curThread (nextThread): " << curThread->threadID << endl;
-
-      curThread->state = VM_THREAD_STATE_RUNNING; 
-      //printThreadInfo();
-      //cout << endl << "context save" << endl;
-      if (MachineContextSave(&prevThread->mcntx) == 0)
-      {
-        //cout << "context restore" << endl;
-        //cerr << static_cast<void *>(&curThread->mcntx) << endl;
-        MachineContextRestore(&curThread->mcntx);
-        //cout << "a" << endl;
-      }
-      //MachineContextSwitch(&prevThread->mcntx, &curThread->mcntx);
-      //cout << "done" << endl << endl;
     }
+
+    else if(!normalQueue.empty())
+    {
+
+      curThread = normalQueue.front();
+      normalQueue.pop();
+
+    }
+
+    else if(!lowQueue.empty())
+    {
+
+      curThread = lowQueue.front();
+      lowQueue.pop();
+
+    }
+
+    curThread->addedToQueue = 0;
+
+    if (activate && (curThread->priority <= prevThread->priority))
+    {
+      curThread = prevThread;
+      return;
+    }
+
+    if ((curThread->priority < prevThread->priority) && (prevThread->state == VM_THREAD_STATE_RUNNING))
+    {
+      curThread = prevThread;
+      return;
+    }
+
+    if (prevThread->threadID == curThread->threadID)
+      return;
+
+    if (prevThread->state == VM_THREAD_STATE_RUNNING)
+      prevThread->state = VM_THREAD_STATE_READY;
+
+    //cout << "prevThread: " << prevThread->threadID << endl;
+    //cout << "curThread (nextThread): " << curThread->threadID << endl;
+
+    curThread->state = VM_THREAD_STATE_RUNNING; 
+    //printThreadInfo();
+    //cout << endl << "context save" << endl;
+    if (MachineContextSave(&prevThread->mcntx) == 0)
+    {
+      //cout << "context restore" << endl;
+      //cerr << static_cast<void *>(&curThread->mcntx) << endl;
+      MachineContextRestore(&curThread->mcntx);
+      //cout << "a" << endl;
+    }
+    //MachineContextSwitch(&prevThread->mcntx, &curThread->mcntx);
+    //cout << "done" << endl << endl;
 
     MachineResumeSignals(sigstate);
 
@@ -287,14 +285,14 @@ extern "C" {
       {
         if ((*itr)->locked == 0)
         {
-          cout << "unlocked" << endl;
+          //cout << "unlocked" << endl;
           (*itr)->locked = 1;
           (*itr)->owner = curThread;
         }
         else
         {
-          cout << "mutexID: " << mutex << endl;
-          cout << "already locked" << endl;
+          //cout << "mutexID: " << mutex << endl;
+          //cout << "already locked" << endl;
           curThread->state = VM_THREAD_STATE_WAITING;
 
           if(curThread->priority == VM_THREAD_PRIORITY_HIGH)
