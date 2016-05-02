@@ -214,11 +214,9 @@ extern "C" {
       if ((threads.size() == 2) && (threads[0]->state == VM_THREAD_STATE_RUNNING))
       {
         //cout << "b" << endl;
-        MachineResumeSignals(&sigstate);
         curThread = threads[0];
         return;
       }
-      //cout << "a" << endl;
       curThread = threads[1];
     }
 
