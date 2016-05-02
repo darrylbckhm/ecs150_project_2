@@ -207,6 +207,21 @@ extern "C" {
 
     }
 
+    if (curThread->threadID == prevThread->threadID)
+    {
+      //cout << "prevThread: " << prevThread->threadID << endl;
+      //cout << "curThread (nextThread): " << curThread->threadID << endl;
+      if ((threads.size() == 2) && (threads[0]->state == VM_THREAD_STATE_RUNNING))
+      {
+        //cout << "b" << endl;
+        MachineResumeSignals(&sigstate);
+        curThread = threads[0];
+        return;
+      }
+      //cout << "a" << endl;
+      curThread = threads[1];
+    }
+
     curThread->addedToQueue = 0;
 
     if (activate && (curThread->priority <= prevThread->priority))
@@ -491,7 +506,7 @@ extern "C" {
       }
     }
 
-    cout << "done activating before scheduling" << endl;
+    //cout << "done activating before scheduling" << endl;
 
     MachineResumeSignals(&sigstate);
     Scheduler(true);
@@ -695,7 +710,7 @@ extern "C" {
       threads[0]->state = VM_THREAD_STATE_RUNNING;
       curThread = threads[0];
 
-      VMThreadCreate(idle, NULL, 0x100000, VM_THREAD_PRIORITY_LOW, &VMThreadID);
+      VMThreadCreate(idle, NULL, 0x100000, VM_THREAD_PRIORITY_IDLE, &VMThreadID);
       VMThreadActivate(VMThreadID);
 
       //printThreadInfo();
