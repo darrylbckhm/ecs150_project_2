@@ -59,6 +59,8 @@ extern "C" {
   // keep track of total ticks
   volatile unsigned int ticksElapsed;
 
+  volatile unsigned int glbl_tickms;
+
   // vector of all threads
   static vector<TCB*> threads;
   static vector<Mutex *> mutexes;
@@ -608,11 +610,9 @@ extern "C" {
 
     MachineSuspendSignals(sigstate);
 
-    *tickmsref = (*tickmsref) * 1000;
+    *tickmsref = glbl_tickms;
 
     MachineResumeSignals(sigstate);
-
-    Scheduler(false);
 
     return VM_STATUS_SUCCESS;
 
@@ -626,22 +626,27 @@ extern "C" {
     MachineSuspendSignals(sigstate);
 
     if(tickref == NULL)
+    {
+
+      MachineResumeSignals(sigstate);    
       return VM_STATUS_ERROR_INVALID_PARAMETER;
 
-    *tickref = 2; 
+    }
+
+    *tickref = ticksElapsed; 
 
     MachineResumeSignals(sigstate);
-
-    Scheduler(false);
 
     return VM_STATUS_SUCCESS;
 
   }
 
 
+
   TVMStatus VMStart(int tickms, int argc, char *argv[])
   {
 
+    glbl_tickms = tickms;
 
     string module_name(argv[0]);
     TVMMainEntry main_entry = VMLoadModule(module_name.c_str());
