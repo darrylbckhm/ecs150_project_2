@@ -4,6 +4,8 @@
 #define NULL    ((void *)0)
 #endif
 
+#include "stdio.h"
+
 void VMThread(void *param){
     volatile int *Val = (int *)param;
     int RunTimeTicks;

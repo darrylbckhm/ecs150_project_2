@@ -42,7 +42,6 @@ extern "C" {
 
       void AlarmCall(void *param);
 
-      TMachineSignalStateRef sigstate;
 
   };
 
@@ -83,6 +82,7 @@ extern "C" {
   void printThreadInfo()
   {
     cout << endl;
+    cout << "ticksElapsed: " << ticksElapsed << endl;
     cout << "size of threads vector: " << threads.size() << endl;
     cout << "size of highQueue: " << highQueue.size() << endl;
     cout << "size of normalQueue: " << normalQueue.size() << endl;
@@ -129,10 +129,10 @@ extern "C" {
   void skeleton(void *param)
   {
     //cout << "a" << endl;
-    MachineEnableSignals();
     //printThreadInfo();
     TCB *thread = (TCB *)param;
 
+    MachineEnableSignals();
     thread->entry(thread->param);
 
     VMThreadTerminate(curThread->threadID);
@@ -141,11 +141,10 @@ extern "C" {
 
   void Scheduler(bool activate)
   {
-
     //cout << "entering scheduler" << endl;
 
-    TMachineSignalStateRef sigstate = new TMachineSignalState;
-    //MachineSuspendSignals(sigstate);
+    TMachineSignalState sigstate;
+    MachineSuspendSignals(&sigstate);
 
     TCB *prevThread = curThread;
     currentThreadID = prevThread->threadID;
@@ -213,17 +212,22 @@ extern "C" {
     if (activate && (curThread->priority <= prevThread->priority))
     {
       curThread = prevThread;
+      MachineResumeSignals(&sigstate);
       return;
     }
 
     if ((curThread->priority < prevThread->priority) && (prevThread->state == VM_THREAD_STATE_RUNNING))
     {
       curThread = prevThread;
+      MachineResumeSignals(&sigstate);
       return;
     }
 
     if (prevThread->threadID == curThread->threadID)
+    {
+      MachineResumeSignals(&sigstate);
       return;
+    }
 
     if (prevThread->state == VM_THREAD_STATE_RUNNING)
       prevThread->state = VM_THREAD_STATE_READY;
@@ -234,23 +238,24 @@ extern "C" {
     curThread->state = VM_THREAD_STATE_RUNNING; 
     //printThreadInfo();
     //cout << endl << "context save" << endl;
-    if (MachineContextSave(&prevThread->mcntx) == 0)
-    {
-      //cout << "context restore" << endl;
-      //cerr << static_cast<void *>(&curThread->mcntx) << endl;
-      MachineContextRestore(&curThread->mcntx);
-      //cout << "a" << endl;
-    }
-    //MachineContextSwitch(&prevThread->mcntx, &curThread->mcntx);
+    MachineResumeSignals(&sigstate);
+    //if (MachineContextSave(&prevThread->mcntx) == 0)
+    //{
+    //cout << "context restore" << endl;
+    //cerr << static_cast<void *>(&curThread->mcntx) << endl;
+    // MachineContextRestore(&curThread->mcntx);
+    //cout << "a" << endl;
+    //}
+    MachineContextSwitch(&prevThread->mcntx, &curThread->mcntx);
     //cout << "done" << endl << endl;
 
-    MachineResumeSignals(sigstate);
+    MachineResumeSignals(&sigstate);
 
   }
 
   void idle(void *param)
   {
-    //cout << "a" << endl;
+    MachineEnableSignals();
 
     while(1)
     {
@@ -263,8 +268,8 @@ extern "C" {
 
   TVMStatus VMMutexCreate(TVMMutexIDRef mutexref)
   {
-    TMachineSignalStateRef sigstate = new TMachineSignalState;
-    MachineSuspendSignals(sigstate);
+    TMachineSignalState sigstate;
+    MachineSuspendSignals(&sigstate);
 
     Mutex *mutex = new Mutex;
     mutex->locked = 0;
@@ -274,15 +279,15 @@ extern "C" {
 
     *mutexref = mutex->mutexID;
 
-    MachineResumeSignals(sigstate);
+    MachineResumeSignals(&sigstate);
 
     return VM_STATUS_SUCCESS;
   }
 
   TVMStatus VMMutexAcquire(TVMMutexID mutex, TVMTick timeout)
   {
-    TMachineSignalStateRef sigstate = new TMachineSignalState;
-    MachineSuspendSignals(sigstate);
+    TMachineSignalState sigstate;
+    MachineSuspendSignals(&sigstate);
 
     for (vector<Mutex *>::iterator itr = mutexes.begin(); itr != mutexes.end(); itr++)
     {
@@ -321,22 +326,22 @@ extern "C" {
 
           }
 
-          MachineResumeSignals(sigstate);
+          MachineResumeSignals(&sigstate);
           Scheduler(false);
 
         }
       }
     }
 
-    MachineResumeSignals(sigstate);
+    MachineResumeSignals(&sigstate);
 
     return VM_STATUS_SUCCESS;
   }
 
   TVMStatus VMMutexRelease(TVMMutexID mutex)
   {
-    TMachineSignalStateRef sigstate = new TMachineSignalState;
-    MachineSuspendSignals(sigstate);
+    TMachineSignalState sigstate;
+    MachineSuspendSignals(&sigstate);
 
     for (vector<Mutex *>::iterator itr = mutexes.begin(); itr != mutexes.end(); itr++)
     {
@@ -365,13 +370,13 @@ extern "C" {
           (*itr)->locked = 1;
           (*itr)->owner = newOwner;
           newOwner->state = VM_THREAD_STATE_READY;
-          MachineResumeSignals(sigstate);
+          MachineResumeSignals(&sigstate);
           Scheduler(false);
         }
       }
     }
 
-    MachineResumeSignals(sigstate);
+    MachineResumeSignals(&sigstate);
 
     return VM_STATUS_SUCCESS;
   }
@@ -380,11 +385,14 @@ extern "C" {
   TVMStatus VMThreadCreate(TVMThreadEntry entry, void *param, TVMMemorySize memsize, TVMThreadPriority prio, TVMThreadIDRef tid)
   {
 
-    TMachineSignalStateRef sigstate = new TMachineSignalState;
-    MachineSuspendSignals(sigstate);
+    TMachineSignalState sigstate;
+    MachineSuspendSignals(&sigstate);
 
     if(entry == NULL || tid == NULL)
+    {
+      MachineResumeSignals(&sigstate);
       return VM_STATUS_ERROR_INVALID_PARAMETER;
+    }
 
     TVMThreadID id = threads.size();
 
@@ -403,7 +411,7 @@ extern "C" {
     threads.push_back(thread);
 
     *tid = id;
-    MachineResumeSignals(sigstate);
+    MachineResumeSignals(&sigstate);
 
     return VM_STATUS_SUCCESS;
   }
@@ -424,6 +432,8 @@ extern "C" {
 
   TVMStatus VMThreadDelete(TVMThreadID thread)
   {
+    TMachineSignalState sigstate;
+    MachineSuspendSignals(&sigstate);
 
     for(vector<TCB*>::iterator itr = threads.begin(); itr != threads.end(); itr++)
     {
@@ -438,11 +448,14 @@ extern "C" {
       else
       {
 
+        MachineResumeSignals(&sigstate);
         return VM_STATUS_ERROR_INVALID_ID;
 
       }
 
     }
+
+    MachineResumeSignals(&sigstate);
 
     return VM_STATUS_SUCCESS;
 
@@ -451,19 +464,19 @@ extern "C" {
   TVMStatus VMThreadID(TVMThreadIDRef threadref)
   {
 
-     if(threadref == NULL)
-       return VM_STATUS_ERROR_INVALID_PARAMETER;
-     else
-       *threadref = curThread->threadID;
+    if(threadref == NULL)
+      return VM_STATUS_ERROR_INVALID_PARAMETER;
+    else
+      *threadref = curThread->threadID;
 
-     return VM_STATUS_SUCCESS;
+    return VM_STATUS_SUCCESS;
 
   }
 
   TVMStatus VMThreadActivate(TVMThreadID thread)
   {
-    TMachineSignalStateRef sigstate = new TMachineSignalState;
-    MachineSuspendSignals(sigstate);
+    TMachineSignalState sigstate;
+    MachineSuspendSignals(&sigstate);
 
     for (vector<TCB *>::iterator itr = threads.begin(); itr != threads.end(); itr++)
     {
@@ -480,14 +493,17 @@ extern "C" {
 
     cout << "done activating before scheduling" << endl;
 
+    MachineResumeSignals(&sigstate);
     Scheduler(true);
-    MachineResumeSignals(sigstate);
+    MachineResumeSignals(&sigstate);
 
     return VM_STATUS_SUCCESS;
   }
 
   TVMStatus VMThreadTerminate(TVMThreadID thread)
   {
+    TMachineSignalState sigstate;
+    MachineSuspendSignals(&sigstate);
 
     for(vector<TCB*>::iterator itr = threads.begin(); itr != threads.end(); itr++)
     {
@@ -505,6 +521,7 @@ extern "C" {
         {
 
           (*itr)->state = VM_THREAD_STATE_DEAD;
+          MachineResumeSignals(&sigstate);
           Scheduler(false);
           return VM_STATUS_SUCCESS;
 
@@ -514,19 +531,24 @@ extern "C" {
 
     }
 
+    MachineResumeSignals(&sigstate);
+
     return VM_STATUS_FAILURE;
 
   }
 
   TVMStatus VMThreadState(TVMThreadID thread, TVMThreadStateRef stateref)
   {
-    TMachineSignalStateRef sigstate = new TMachineSignalState;
-    MachineSuspendSignals(sigstate);
+    TMachineSignalState sigstate;
+    MachineSuspendSignals(&sigstate);
 
     int found = 0;
 
     if(stateref == NULL)
+    {
+      MachineResumeSignals(&sigstate);
       return VM_STATUS_ERROR_INVALID_PARAMETER;
+    }
 
     for (vector<TCB *>::iterator itr = threads.begin(); itr != threads.end(); itr++)
     {
@@ -542,12 +564,12 @@ extern "C" {
     if(!found)
     {
 
-      MachineResumeSignals(sigstate);
+      MachineResumeSignals(&sigstate);
       return VM_STATUS_ERROR_INVALID_ID;
 
     }
 
-    MachineResumeSignals(sigstate);
+    MachineResumeSignals(&sigstate);
 
     return VM_STATUS_SUCCESS;
 
@@ -555,6 +577,8 @@ extern "C" {
 
   TVMStatus VMThreadSleep(TVMTick tick)
   {
+    TMachineSignalState sigstate;
+    MachineSuspendSignals(&sigstate);
 
     for (vector<TCB *>::iterator itr = threads.begin(); itr != threads.end(); itr++)
     {
@@ -564,6 +588,7 @@ extern "C" {
         (*itr)->state = VM_THREAD_STATE_WAITING;
         (*itr)->sleep = 1;
         //printThreadInfo();
+        MachineResumeSignals(&sigstate);
         Scheduler(false);
       }
     }
@@ -574,13 +599,16 @@ extern "C" {
 
   void AlarmCall(void *param)
   {
+    //cout << "a" << endl;
+    TMachineSignalState sigstate;
 
-    TMachineSignalStateRef sigstate = new TMachineSignalState;
-
-    MachineSuspendSignals(sigstate);
+    MachineSuspendSignals(&sigstate);
+    ticksElapsed = ticksElapsed + 1;
+    //printThreadInfo();
 
     for (vector<TCB *>::iterator itr = threads.begin(); itr != threads.end(); itr++)
     {
+      //cout << "c" << endl;
       if ((*itr)->state == VM_THREAD_STATE_WAITING)
       {
         if ((*itr)->sleep == 1)
@@ -596,23 +624,26 @@ extern "C" {
         }
       }
     }
+    //printThreadInfo();
 
-    MachineResumeSignals(sigstate);
+    MachineResumeSignals(&sigstate);
+    MachineEnableSignals();
 
     Scheduler(false);
+    MachineResumeSignals(&sigstate);
 
   }
 
   TVMStatus VMTickMS(int *tickmsref)
   {
 
-    TMachineSignalStateRef sigstate = new TMachineSignalState;
+    TMachineSignalState sigstate;
 
-    MachineSuspendSignals(sigstate);
+    MachineSuspendSignals(&sigstate);
 
     *tickmsref = glbl_tickms;
 
-    MachineResumeSignals(sigstate);
+    MachineResumeSignals(&sigstate);
 
     return VM_STATUS_SUCCESS;
 
@@ -621,21 +652,22 @@ extern "C" {
   TVMStatus VMTickCount(TVMTickRef tickref)
   {
 
-    TMachineSignalStateRef sigstate = new TMachineSignalState;
+    TMachineSignalState sigstate;
 
-    MachineSuspendSignals(sigstate);
+    MachineSuspendSignals(&sigstate);
 
     if(tickref == NULL)
     {
 
-      MachineResumeSignals(sigstate);    
+      MachineResumeSignals(&sigstate);    
       return VM_STATUS_ERROR_INVALID_PARAMETER;
 
     }
 
     *tickref = ticksElapsed; 
+    //cout << "ticksElapsed: " << ticksElapsed << endl;
 
-    MachineResumeSignals(sigstate);
+    MachineResumeSignals(&sigstate);
 
     return VM_STATUS_SUCCESS;
 
@@ -668,17 +700,16 @@ extern "C" {
 
       //printThreadInfo();
 
-    cout << "test" << endl;
       main_entry(argc, argv);
 
-     }
+    }
 
-     else
-     {
+    else
+    {
 
-       return VM_STATUS_FAILURE;
+      return VM_STATUS_FAILURE;
 
-     }
+    }
 
     return VM_STATUS_SUCCESS;
 
@@ -687,9 +718,9 @@ extern "C" {
   void fileCallback(void *calldata, int result)
   {
 
-    TMachineSignalStateRef sigstate = new TMachineSignalState;
+    TMachineSignalState sigstate;
 
-    MachineSuspendSignals(sigstate);
+    MachineSuspendSignals(&sigstate);
 
     curThread->fileCallFlag = 1;
 
@@ -703,7 +734,7 @@ extern "C" {
 
     curThread->fileCallFlag = 0;
 
-    MachineResumeSignals(sigstate);
+    MachineResumeSignals(&sigstate);
 
     Scheduler(false);    
 
@@ -712,9 +743,9 @@ extern "C" {
   TVMStatus VMFileSeek(int filedescriptor, int offset, int whence, int *newoffset)
   {
 
-    TMachineSignalStateRef sigstate = new TMachineSignalState;
+    TMachineSignalState sigstate;
 
-    MachineSuspendSignals(sigstate);
+    MachineSuspendSignals(&sigstate);
 
     if (newoffset != NULL)
       *newoffset = offset;
@@ -726,7 +757,7 @@ extern "C" {
 
     curThread->state = VM_THREAD_STATE_WAITING;
 
-    MachineResumeSignals(sigstate);
+    MachineResumeSignals(&sigstate);
 
     Scheduler(false);
 
@@ -737,12 +768,12 @@ extern "C" {
   TVMStatus VMFileClose(int filedescriptor)
   {
 
-    TMachineSignalStateRef sigstate = new TMachineSignalState;
-    MachineSuspendSignals(sigstate);
+    TMachineSignalState sigstate;
+    MachineSuspendSignals(&sigstate);
 
     MachineFileClose(filedescriptor, fileCallback, curThread);
 
-    MachineResumeSignals(sigstate);
+    MachineResumeSignals(&sigstate);
 
     Scheduler(false);
 
@@ -753,9 +784,9 @@ extern "C" {
   TVMStatus VMFileOpen(const char *filename, int flags, int mode, int *filedescriptor)
   {
 
-    TMachineSignalStateRef sigstate = new TMachineSignalState;
+    TMachineSignalState sigstate;
 
-    MachineSuspendSignals(sigstate);
+    MachineSuspendSignals(&sigstate);
 
     if (filename == NULL || filedescriptor == NULL)
       return VM_STATUS_ERROR_INVALID_PARAMETER;
@@ -768,7 +799,7 @@ extern "C" {
 
     *filedescriptor = curThread->fileCallData; 
 
-    MachineResumeSignals(sigstate);
+    MachineResumeSignals(&sigstate);
 
     return VM_STATUS_SUCCESS; 
 
@@ -777,9 +808,9 @@ extern "C" {
   TVMStatus VMFileWrite(int filedescriptor, void *data, int *length)
   { 
 
-    TMachineSignalStateRef sigstate = new TMachineSignalState;
+    TMachineSignalState sigstate;
 
-    MachineSuspendSignals(sigstate);
+    MachineSuspendSignals(&sigstate);
 
     if (length == NULL || data == NULL)
       return VM_STATUS_ERROR_INVALID_PARAMETER;
@@ -788,7 +819,7 @@ extern "C" {
 
     curThread->state = VM_THREAD_STATE_WAITING;
 
-    MachineResumeSignals(sigstate);
+    MachineResumeSignals(&sigstate);
 
     Scheduler(false);
 
@@ -799,9 +830,9 @@ extern "C" {
   TVMStatus VMFileRead(int filedescriptor, void *data, int *length)
   {
 
-    TMachineSignalStateRef sigstate = new TMachineSignalState;
+    TMachineSignalState sigstate;
 
-    MachineSuspendSignals(sigstate);
+    MachineSuspendSignals(&sigstate);
 
     if (length == NULL || data == NULL)
       return VM_STATUS_ERROR_INVALID_PARAMETER;
@@ -814,7 +845,7 @@ extern "C" {
 
     *length = curThread->fileCallData;
 
-    MachineResumeSignals(sigstate);
+    MachineResumeSignals(&sigstate);
 
     return VM_STATUS_SUCCESS;
 
