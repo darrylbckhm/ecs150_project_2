@@ -139,6 +139,9 @@ extern "C" {
 
   void Scheduler(bool activate)
   {
+
+    //cout << "entering scheduler" << endl;
+
     TMachineSignalStateRef sigstate = new TMachineSignalState;
     //MachineSuspendSignals(sigstate);
 
@@ -378,6 +381,9 @@ extern "C" {
     TMachineSignalStateRef sigstate = new TMachineSignalState;
     MachineSuspendSignals(sigstate);
 
+    if(entry == NULL || tid == NULL)
+      return VM_STATUS_ERROR_INVALID_PARAMETER;
+
     TVMThreadID id = threads.size();
 
     TCB *thread = new TCB;
@@ -394,13 +400,62 @@ extern "C" {
 
     threads.push_back(thread);
 
-    //curThread = thread;
-
     *tid = id;
-
     MachineResumeSignals(sigstate);
 
     return VM_STATUS_SUCCESS;
+  }
+
+  TVMStatus VMMutexQuery(TVMMutexID mutex, TVMThreadIDRef ownerref)
+  {
+
+    return VM_STATUS_SUCCESS;
+
+  }
+
+  TVMStatus VMMutexDelete(TVMMutexID mutex)
+  {
+
+    return VM_STATUS_SUCCESS;
+
+  }
+
+  TVMStatus VMThreadDelete(TVMThreadID thread)
+  {
+
+    for(vector<TCB*>::iterator itr = threads.begin(); itr != threads.end(); itr++)
+    {
+
+      if(thread == curThread->threadID)
+      {
+
+        threads.erase(itr);
+
+      }
+
+      else
+      {
+
+        return VM_STATUS_ERROR_INVALID_ID;
+
+      }
+
+    }
+
+    return VM_STATUS_SUCCESS;
+
+  }
+
+  TVMStatus VMThreadID(TVMThreadIDRef threadref)
+  {
+
+     if(threadref == NULL)
+       return VM_STATUS_ERROR_INVALID_PARAMETER;
+     else
+       *threadref = curThread->threadID;
+
+     return VM_STATUS_SUCCESS;
+
   }
 
   TVMStatus VMThreadActivate(TVMThreadID thread)
@@ -420,6 +475,8 @@ extern "C" {
         (*itr)->state = VM_THREAD_STATE_READY;
       }
     }
+
+    cout << "done activating before scheduling" << endl;
 
     Scheduler(true);
     MachineResumeSignals(sigstate);
@@ -464,12 +521,28 @@ extern "C" {
     TMachineSignalStateRef sigstate = new TMachineSignalState;
     MachineSuspendSignals(sigstate);
 
+    int found = 0;
+
+    if(stateref == NULL)
+      return VM_STATUS_ERROR_INVALID_PARAMETER;
+
     for (vector<TCB *>::iterator itr = threads.begin(); itr != threads.end(); itr++)
     {
+
       if ((*itr)->threadID == thread)
       {
         *stateref = (*itr)->state;
+        found = 1;
       }
+
+    }
+
+    if(!found)
+    {
+
+      MachineResumeSignals(sigstate);
+      return VM_STATUS_ERROR_INVALID_ID;
+
     }
 
     MachineResumeSignals(sigstate);
@@ -569,26 +642,41 @@ extern "C" {
   TVMStatus VMStart(int tickms, int argc, char *argv[])
   {
 
+
     string module_name(argv[0]);
     TVMMainEntry main_entry = VMLoadModule(module_name.c_str());
 
-    MachineInitialize();
-    MachineRequestAlarm(tickms*1000, AlarmCall, NULL);
-    MachineEnableSignals();   
+    if(main_entry != NULL)
+    {
 
-    TVMThreadID VMThreadID;
-    VMThreadCreate(NULL, NULL, 0x100000, VM_THREAD_PRIORITY_NORMAL, &VMThreadID);
-    threads[0]->state = VM_THREAD_STATE_RUNNING;
-    curThread = threads[0];
+      MachineInitialize();
+      MachineRequestAlarm(tickms*1000, AlarmCall, NULL);
+      MachineEnableSignals();   
 
-    VMThreadCreate(idle, NULL, 0x100000, VM_THREAD_PRIORITY_LOW, &VMThreadID);
-    VMThreadActivate(VMThreadID);
+      TVMThreadID VMThreadID;
+      VMThreadCreate(skeleton, NULL, 0x100000, VM_THREAD_PRIORITY_NORMAL, &VMThreadID);
+      threads[0]->state = VM_THREAD_STATE_RUNNING;
+      curThread = threads[0];
 
-    //printThreadInfo();
+      VMThreadCreate(idle, NULL, 0x100000, VM_THREAD_PRIORITY_LOW, &VMThreadID);
+      VMThreadActivate(VMThreadID);
 
-    main_entry(argc, argv);
+      //printThreadInfo();
+
+    cout << "test" << endl;
+      main_entry(argc, argv);
+
+     }
+
+     else
+     {
+
+       return VM_STATUS_FAILURE;
+
+     }
 
     return VM_STATUS_SUCCESS;
+
   }
 
   void fileCallback(void *calldata, int result)
